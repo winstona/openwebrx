@@ -112,11 +112,6 @@ def main():
 		rtl_thread.start()
 		print "[openwebrx-main] Started rtl thread: "+cfg.start_rtl_command
 
-	#Run rtl_mus.py in a different OS thread
-	python_command="pypy" if pypy else "python2"
-	rtl_mus_thread=threading.Thread(target = lambda:subprocess.Popen(python_command+" rtl_mus.py config_rtl", shell=True), args=())
-	rtl_mus_thread.start() # The new feature in GNU Radio 3.7: top_block() locks up ALL python threads until it gets the TCP connection.
-	print "[openwebrx-main] Started rtl_mus."
 	time.sleep(1) #wait until it really starts	
 
 	#Initialize clients

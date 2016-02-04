@@ -66,11 +66,12 @@ sdrhu_public_listing = False
 dsp_plugin="csdr"
 fft_fps=9
 fft_size=4096
-samp_rate = 250000
+samp_rate = int(0.3e6)
 
-center_freq = 145525000
-rf_gain = 5
-ppm = 0 
+mixer_freq = 0 #125.000e6
+center_freq = int(439.200e6 + mixer_freq)
+rf_gain = 26
+ppm = 17
 
 audio_compression="adpcm" #valid values: "adpcm", "none" 
 fft_compression="adpcm" #valid values: "adpcm", "none" 
@@ -81,15 +82,16 @@ start_rtl_thread=True
 
 # >> RTL-SDR via rtl_sdr 
 
-start_rtl_command="rtl_sdr -s {samp_rate} -f {center_freq} -p {ppm} - | nc -vvl 127.0.0.1 8888".format(rf_gain=rf_gain, center_freq=center_freq, samp_rate=samp_rate, ppm=ppm)
+start_rtl_command="rtl_sdr -s {samp_rate} -f {center_freq} -p {ppm} - | ./distserv/bin/release/distserv -p 4951 -".format(rf_gain=rf_gain, center_freq=center_freq, samp_rate=samp_rate, ppm=ppm)
 format_conversion="csdr convert_u8_f"
 
-#start_rtl_command="hackrf_transfer -s {samp_rate} -f {center_freq} -g {rf_gain} -l16 -a0 -r hackrf_pipe & cat hackrf_pipe | nc -vvl 127.0.0.1 8888".format(rf_gain=rf_gain, center_freq=center_freq, samp_rate=samp_rate, ppm=ppm)
+# >> HackRF
+
+#start_rtl_command="hackrf_transfer -s {samp_rate} -f {center_freq} -g {rf_gain} -l40 -a0 -r /dev/stdout | ./distserv/bin/release/distserv -p 4951 -".format(rf_gain=rf_gain, center_freq=center_freq, samp_rate=samp_rate, ppm=ppm)
 #format_conversion="csdr convert_i8_f"
-## To use a HackRF, first run "mkfifo hackrf_pipe" in the OpenWebRX directory.
-## You should also use the csdr git repo from here: 
-##   git clone https://github.com/sgentle/csdr
-##   git checkout origin/signed_char
+# You should use the csdr git repo from here:
+#   git clone https://github.com/sgentle/csdr
+#   git checkout origin/signed_char
 
 # >> Sound card SDR (needs ALSA)
 #I did not have the chance to properly test it.
@@ -108,7 +110,7 @@ format_conversion="csdr convert_u8_f"
 
 #You can use other SDR hardware as well, by giving your own command that outputs the I/Q samples...
 
-shown_center_freq = center_freq #you can change this if you use an upconverter
+shown_center_freq = int(center_freq-mixer_freq) #you can change this if you use an upconverter
 
 client_audio_buffer_size = 4 
 #increasing client_audio_buffer_size will:
