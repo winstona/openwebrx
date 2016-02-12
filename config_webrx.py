@@ -80,9 +80,13 @@ start_rtl_thread=True
 
 # ==== I/Q sources (uncomment the appropriate) ====
 
+iqdist_command = "./distserv/bin/release/distserv -p 4951 iqdata.fifo"
+
 # >> RTL-SDR via rtl_sdr 
 
-start_rtl_command="rtl_sdr -s {samp_rate} -f {center_freq} -p {ppm} - | ./distserv/bin/release/distserv -p 4951 -".format(rf_gain=rf_gain, center_freq=center_freq, samp_rate=samp_rate, ppm=ppm)
+def get_rtl_command(center_freq):
+	global rf_gain, samp_rate, ppm
+	return "rtl_sdr -s {samp_rate} -f {center_freq} -p {ppm} iqdata.fifo".format(rf_gain=rf_gain, center_freq=center_freq, samp_rate=samp_rate, ppm=ppm)
 format_conversion="csdr convert_u8_f"
 
 # >> HackRF
@@ -105,7 +109,10 @@ format_conversion="csdr convert_u8_f"
 
 # >> /dev/urandom test signal source
 #samp_rate = 2400000
-#start_rtl_command="cat /dev/urandom | (pv -qL `python -c 'print int({samp_rate} * 2.2)'` 2>&1) | nc -vvl 127.0.0.1  8888".format(rf_gain=rf_gain, center_freq=center_freq, samp_rate=samp_rate)
+#def get_rtl_command(center_freq):
+#	global rf_gain, samp_rate, ppm
+#	return "cat /dev/urandom | (pv -qL `python -c 'print int({samp_rate} * 2.2)'` 2>&1) > iqdata.fifo".format(rf_gain=rf_gain, center_freq=center_freq, samp_rate=samp_rate)
+#
 #format_conversion="csdr convert_u8_f"
 
 #You can use other SDR hardware as well, by giving your own command that outputs the I/Q samples...

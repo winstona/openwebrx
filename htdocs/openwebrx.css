@@ -496,6 +496,15 @@ html, body
 	height: 20px;
 }
 
+#openwebrx-center-freq
+{
+	position: absolute;
+	right: 353px;
+	top: 3px;
+	margin: 17px 0;
+	color: white;
+}
+
 #openwebrx-main-buttons img
 {
 }
