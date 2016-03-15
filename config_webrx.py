@@ -32,6 +32,7 @@ config_webrx: configuration options for OpenWebRX
 """
 # ==== Server settings ====
 web_port=8073
+iq_server_port=4192
 server_hostname="localhost" # If this contains an incorrect value, the web UI may freeze on load (it can't open websocket)
 max_clients=20
 
@@ -79,10 +80,20 @@ start_rtl_thread=True
 
 # ==== I/Q sources (uncomment the appropriate) ====
 
+iqdist_command = "./distserv/bin/release/distserv -p 4951 iqdata.fifo"
+
 # >> RTL-SDR via rtl_sdr 
 
-start_rtl_command="rtl_sdr -s {samp_rate} -f {center_freq} -p {ppm} -g {rf_gain} -".format(rf_gain=rf_gain, center_freq=center_freq, samp_rate=samp_rate, ppm=ppm)
-format_conversion="csdr convert_u8_f"
+#def get_rtl_command(center_freq):
+#	global rf_gain, samp_rate, ppm
+#	return "rtl_sdr -s {samp_rate} -f {center_freq} -p {ppm} iqdata.fifo || cat /dev/zero > iqdata.fifo".format(rf_gain=rf_gain, center_freq=center_freq, samp_rate=samp_rate, ppm=ppm)
+#format_conversion="csdr convert_u8_f"
+
+# >> HackRF
+def get_rtl_command(center_freq):
+	global rf_gain, samp_rate, ppm
+	return "hackrf_transfer -s {samp_rate} -f {center_freq} -g {rf_gain} -l40 -a0 -r iqdata.fifo".format(rf_gain=rf_gain, center_freq=center_freq, samp_rate=samp_rate, ppm=ppm)
+format_conversion="csdr convert_s8_f"
 
 #start_rtl_command="hackrf_transfer -s {samp_rate} -f {center_freq} -g {rf_gain} -l16 -a0 -q -r-".format(rf_gain=rf_gain, center_freq=center_freq, samp_rate=samp_rate, ppm=ppm)
 #format_conversion="csdr convert_s8_f"
@@ -108,7 +119,10 @@ To use a HackRF, compile the HackRF host tools from its "stdout" branch:
 
 # >> /dev/urandom test signal source
 #samp_rate = 2400000
-#start_rtl_command="cat /dev/urandom | (pv -qL `python -c 'print int({samp_rate} * 2.2)'` 2>&1)".format(rf_gain=rf_gain, center_freq=center_freq, samp_rate=samp_rate)
+#def get_rtl_command(center_freq):
+#	global rf_gain, samp_rate, ppm
+#	return "cat /dev/urandom | (pv -qL `python -c 'print int({samp_rate} * 2.2)'` 2>&1) > iqdata.fifo".format(rf_gain=rf_gain, center_freq=center_freq, samp_rate=samp_rate)
+#
 #format_conversion="csdr convert_u8_f"
 
 # >> gr-osmosdr signal source using GNU Radio (follow this guide: https://github.com/simonyiszk/openwebrx/wiki/Using-GrOsmoSDR-as-signal-source)

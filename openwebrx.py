@@ -131,10 +131,9 @@ def main():
 		print "[openwebrx-main] Error: ncat not detected, please install it! The ncat tool is a netcat alternative, used for distributing the I/Q data stream. It is usually available in the nmap package (sudo apt-get install nmap). For more explanation, look into the README.md"
 		return
 	if cfg.start_rtl_thread:
-		cfg.start_rtl_command += "| ncat -4l %d -k --send-only --allow 127.0.0.1" % cfg.iq_server_port
-		rtl_thread=threading.Thread(target = lambda:subprocess.Popen(cfg.start_rtl_command, shell=True),  args=())
-		rtl_thread.start()
-		print "[openwebrx-main] Started rtl_thread: "+cfg.start_rtl_command
+		iqsource_start(cfg.center_freq)
+		print "[openwebrx-main] Started I/Q source"
+
 	print "[openwebrx-main] Waiting for I/Q server to start..."
 	while True:
 		testsock=socket.socket()
@@ -205,6 +204,13 @@ def bcastmsg_thread_function():
 		for i in range(0,len(clients)):
 			clients[i].bcastmsg="MSG cpu_usage={0} clients={1}".format(int(cpu_usage*100),len(clients))
 		cmr()
+
+def bcastmsg_center_freq():
+	global clients
+	cma("center_freq_bcast")
+	for i in range(0,len(clients)):
+		clients[i].bcastmsg="MSG center_freq={0} setup".format(cfg.shown_center_freq)
+	cmr()
 
 def mutex_test_thread_function():
 	global clients_mutex, lock_try_time
@@ -368,6 +374,20 @@ def close_client(i, use_mutex=True):
 	del clients[i]
 	if use_mutex: cmr()
 
+def iqsource_start(center_freq):
+	global iqsource_process
+	cmd = cfg.get_rtl_command(center_freq)
+	# http://stackoverflow.com/questions/4789837/how-to-terminate-a-python-subprocess-launched-with-shell-true/4791612#4791612
+	iqsource_process = subprocess.Popen(cmd, shell=True, preexec_fn=os.setpgrp)
+	print "[openwebrx] started I/Q source:", cmd
+
+def iqsource_stop():
+	global iqsource_process
+	os.killpg(os.getpgid(iqsource_process.pid), signal.SIGTERM)
+	exit_code = iqsource_process.wait()
+	print "[openwebrx] stopped I/Q source, exit code:", exit_code
+	time.sleep(2) # give the USB some time to recover
+
 # http://www.codeproject.com/Articles/462525/Simple-HTTP-Server-and-Client-in-Python
 # some ideas are used from the artice above
 
@@ -488,7 +508,14 @@ class WebRXHandler(BaseHTTPRequestHandler):
 								filter_limit=dsp.get_output_rate()/2
 								for pair in pairs:
 									param_name, param_value = pair.split("=")
-									if param_name == "low_cut" and -filter_limit <= float(param_value) <= filter_limit:
+									if param_name == "center_freq" and cfg.start_rtl_thread:
+										cfg.center_freq = int(param_value) + cfg.mixer_freq
+										cfg.shown_center_freq = int(param_value)
+										iqsource_stop()
+										iqsource_start(cfg.center_freq)
+										bcastmsg_center_freq()
+										break # send broadcast message before processing other commands
+									elif param_name == "low_cut" and -filter_limit <= float(param_value) <= filter_limit:
 										bpf_set=True
 										new_bpf[0]=int(param_value)
 									elif param_name == "high_cut" and -filter_limit <= float(param_value) <= filter_limit:
@@ -590,6 +617,7 @@ class WebRXHandler(BaseHTTPRequestHandler):
 						("%[AUDIO_BUFSIZE]",str(cfg.client_audio_buffer_size)),
 						("%[START_OFFSET_FREQ]",str(cfg.start_freq-cfg.center_freq)),
 						("%[START_MOD]",cfg.start_mod),
+						("%[CENTER_FREQ]",str(cfg.shown_center_freq/1e6)),
 						("%[WATERFALL_COLORS]",cfg.waterfall_colors),
 						("%[WATERFALL_MIN_LEVEL]",str(cfg.waterfall_min_level)),
 						("%[WATERFALL_MAX_LEVEL]",str(cfg.waterfall_max_level))

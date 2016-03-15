@@ -2056,3 +2056,10 @@ function progressbar_set(obj,val,text,over)
 	if(innerText==null) return;
 	innerText.innerHTML=text;
 }
+
+function update_center_freq()
+{
+	obj = document.getElementById("openwebrx-center-freq-input");
+	val = Math.round(parseFloat(obj.value) * 1e6);
+	webrx_set_param("center_freq", val);
+}
