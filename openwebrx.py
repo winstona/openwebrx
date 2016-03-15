@@ -129,7 +129,10 @@ def main():
 	#Start rtl thread
 	if os.system("ncat --version > /dev/null") == 32512: #check for ncat
 		print "[openwebrx-main] Error: ncat not detected, please install it! The ncat tool is a netcat alternative, used for distributing the I/Q data stream. It is usually available in the nmap package (sudo apt-get install nmap). For more explanation, look into the README.md"
-		return
+		return 
+
+	subprocess.Popen("distserv/bin/release/distserv -p %d iqdata.fifo" % cfg.iq_server_port, shell=True)
+
 	if cfg.start_rtl_thread:
 		iqsource_start(cfg.center_freq)
 		print "[openwebrx-main] Started I/Q source"
