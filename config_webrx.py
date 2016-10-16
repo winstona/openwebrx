@@ -70,6 +70,7 @@ fft_size=4096
 samp_rate = 250000
 
 center_freq = 145525000
+mixer_freq = 0
 rf_gain = 5
 ppm = 0 
 

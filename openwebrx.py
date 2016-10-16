@@ -131,6 +131,9 @@ def main():
 		print "[openwebrx-main] Error: ncat not detected, please install it! The ncat tool is a netcat alternative, used for distributing the I/Q data stream. It is usually available in the nmap package (sudo apt-get install nmap). For more explanation, look into the README.md"
 		return 
 
+	if os.path.isfile("iqdata.fifo"):
+		os.unlink("iqdata.fifo")
+	os.mkfifo("iqdata.fifo")
 	subprocess.Popen("distserv/bin/release/distserv -p %d iqdata.fifo" % cfg.iq_server_port, shell=True)
 
 	if cfg.start_rtl_thread:
