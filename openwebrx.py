@@ -74,12 +74,28 @@ def import_all_plugins(directory):
 class MultiThreadHTTPServer(ThreadingMixIn, HTTPServer):
     pass
 
-def handle_signal(signal, frame):
+def handle_signal(sig, frame):
 	global spectrum_dsp
-	print "[openwebrx] Ctrl+C: aborting."
-	cleanup_clients(True)
-	spectrum_dsp.stop()
-	os._exit(1) #not too graceful exit
+	if sig == signal.SIGUSR1:
+		print "[openwebrx] Verbose status information on USR1 signal"
+		print
+		print "time.time() =", time.time()
+		print "clients_mutex.locked() =", clients_mutex.locked()
+		print "clients_mutex_locker =", clients_mutex_locker
+		if server_fail: print "server_fail = ", server_fail
+		print "spectrum_thread_watchdog_last_tick =", spectrum_thread_watchdog_last_tick
+		print
+		print "clients:",len(clients)
+		for client in clients:
+			print
+			for key in client._fields:
+				print "\t%s = %s"%(key,str(getattr(client,key)))
+
+	else:
+		print "[openwebrx] Ctrl+C: aborting."
+		cleanup_clients(True)
+		spectrum_dsp.stop()
+		os._exit(1) #not too graceful exit
 
 def access_log(data):
 	global logs
@@ -109,6 +125,7 @@ def main():
 
 	#Set signal handler
 	signal.signal(signal.SIGINT, handle_signal) #http://stackoverflow.com/questions/1112343/how-do-i-capture-sigint-in-python
+	signal.signal(signal.SIGUSR1, handle_signal)
 
 	#Load plugins
 	import_all_plugins("plugins/dsp/")
@@ -349,7 +366,7 @@ def cleanup_clients(end_all=False):
 def generate_client_id(ip):
 	#add a client
 	global clients
-	new_client=namedtuple("ClientStruct", "id gen_time ws_started sprectum_queue ip closed bcastmsg dsp")
+	new_client=namedtuple("ClientStruct", "id gen_time ws_started sprectum_queue ip closed bcastmsg dsp loopstat")
 	new_client.id=md5.md5(str(random.random())).hexdigest()
 	new_client.gen_time=time.time()
 	new_client.ws_started=False # to check whether client has ever tried to open the websocket
@@ -468,6 +485,8 @@ class WebRXHandler(BaseHTTPRequestHandler):
 
 					access_log("Started streaming to client: "+self.client_address[0]+"#"+myclient.id+" (users now: "+str(len(clients))+")")
 
+					myclient.loopstat=0
+
 					while True:
 						if myclient.closed[0]:
 							print "[openwebrx-httpd:ws] client closed by other thread"
@@ -475,34 +494,43 @@ class WebRXHandler(BaseHTTPRequestHandler):
 
 						# ========= send audio =========
 						if dsp_initialized:
+							myclient.loopstat=10
 							temp_audio_data=dsp.read(256)
+							myclient.loopstat=11
 							rxws.send(self, temp_audio_data, "AUD ")
 
 						# ========= send spectrum =========
 						while not myclient.spectrum_queue.empty():
+							myclient.loopstat=20
 							spectrum_data=myclient.spectrum_queue.get()
 							#spectrum_data_mid=len(spectrum_data[0])/2
 							#rxws.send(self, spectrum_data[0][spectrum_data_mid:]+spectrum_data[0][:spectrum_data_mid], "FFT ")
 							# (it seems GNU Radio exchanges the first and second part of the FFT output, we correct it)
+							myclient.loopstat=21
 							rxws.send(self, spectrum_data[0],"FFT ")
 
 						# ========= send smeter_level =========
 						smeter_level=None
 						while True:
 							try:
+								myclient.loopstat=30
 								smeter_level=dsp.get_smeter_level()
 								if smeter_level == None: break
 							except:
 								break
-						if smeter_level!=None: rxws.send(self, "MSG s={0}".format(smeter_level))
+						if smeter_level!=None: 
+							myclient.loopstat=31
+							rxws.send(self, "MSG s={0}".format(smeter_level))
 
 						# ========= send bcastmsg =========
 						if myclient.bcastmsg!="":
+							myclient.loopstat=40
 							rxws.send(self,myclient.bcastmsg)
 							myclient.bcastmsg=""
 
 						# ========= process commands =========
 						while True:
+							myclient.loopstat=50
 							rdata=rxws.recv(self, False)
 							if not rdata: break
 							#try:
@@ -528,25 +556,32 @@ class WebRXHandler(BaseHTTPRequestHandler):
 										bpf_set=True
 										new_bpf[1]=int(param_value)
 									elif param_name == "offset_freq" and -cfg.samp_rate/2 <= float(param_value) <= cfg.samp_rate/2:
+										myclient.loopstat=510
 										dsp.set_offset_freq(int(param_value))
 									elif param_name == "squelch_level" and float(param_value) >= 0:
+										myclient.loopstat=520
 										dsp.set_squelch_level(float(param_value))
 									elif param_name=="mod":
 										if (dsp.get_demodulator()!=param_value):
+											myclient.loopstat=530
 											if dsp_initialized: dsp.stop()
 											dsp.set_demodulator(param_value)
 											if dsp_initialized: dsp.start()
 									elif param_name == "output_rate":
 										if not dsp_initialized:
+											myclient.loopstat=540
 											dsp.set_output_rate(int(param_value))
+											myclient.loopstat=541
 											dsp.set_samp_rate(cfg.samp_rate)
 									elif param_name=="action" and param_value=="start":
 										if not dsp_initialized:
+											myclient.loopstat=550
 											dsp.start()
 											dsp_initialized=True
 									else:
 										print "[openwebrx-httpd:ws] invalid parameter"
 								if bpf_set:
+									myclient.loopstat=560
 									dsp.set_bpf(*new_bpf)
 								#code.interact(local=locals())
 				except:
@@ -577,6 +612,7 @@ class WebRXHandler(BaseHTTPRequestHandler):
 					traceback.print_tb(exc_traceback)
 				finally:
 					cmr()
+				myclient.loopstat=1000
 				return
 			elif self.path in ("/status", "/status/"):
 				#self.send_header('Content-type','text/plain')
@@ -592,12 +628,15 @@ class WebRXHandler(BaseHTTPRequestHandler):
 				if extension == "wrx" and (checkresult or receiver_failed):
 					self.send_302("inactive.html")
 					return
-				if extension == "wrx" and ((self.headers['user-agent'].count("Chrome")==0 and self.headers['user-agent'].count("Firefox")==0 and (not "Googlebot" in self.headers['user-agent'])) if 'user-agent' in self.headers.keys() else True) and (not request_param.count("unsupported")):
+				anyStringsPresentInUserAgent=lambda a: reduce(lambda x,y:x or y, map(lambda b:self.headers['user-agent'].count(b), a), False)
+				if extension == "wrx" and ( (not anyStringsPresentInUserAgent(("Chrome","Firefox","Googlebot","iPhone","iPad","iPod"))) if 'user-agent' in self.headers.keys() else True ) and (not request_param.count("unsupported")):
 					self.send_302("upgrade.html")
 					return
-				if extension == "wrx" and cfg.max_clients<=len(clients):
-					self.send_302("retry.html")
-					return
+				if extension == "wrx":
+					cleanup_clients(False)
+					if cfg.max_clients<=len(clients):
+						self.send_302("retry.html")
+						return
 				self.send_response(200)
 				if(("wrx","html","htm").count(extension)):
 					self.send_header('Content-type','text/html')
@@ -650,7 +689,10 @@ last_idletime=0
 
 def get_cpu_usage():
 	global last_worktime, last_idletime
-	f=open("/proc/stat","r")
+	try:
+		f=open("/proc/stat","r")
+	except:
+		return 0 #Workaround, possibly we're on a Mac
 	line=""
 	while not "cpu " in line: line=f.readline()
 	f.close()

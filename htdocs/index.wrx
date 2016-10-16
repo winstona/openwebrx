@@ -78,7 +78,6 @@
 			<div id="openwebrx-scale-container">
 				<canvas id="openwebrx-scale-canvas" width="0" height="0"></canvas>
 			</div>
-
 			<div id="webrx-canvas-container">
 
 				<div id="openwebrx-phantom-canvas"></div>
@@ -89,7 +88,6 @@
 					<div id="webrx-actual-freq">---.--- MHz</div>
 					<div id="webrx-mouse-freq">---.--- MHz</div>
 					<!--<div class="openwebrx-button" onclick="ws.send('SET mod=wfm');" >WFM</div>-->
-
 					<div class="openwebrx-panel-line">
 						<div class="openwebrx-button openwebrx-demodulator-button" onclick="demodulator_analog_replace('nfm');">FM</div>
 						<div class="openwebrx-button openwebrx-demodulator-button" onclick="demodulator_analog_replace('am');">AM</div>
@@ -122,7 +120,6 @@
 						</div>
 					</div>
 				</div>
-
 				<div class="openwebrx-panel" id="openwebrx-panel-log" data-panel-name="debug" data-panel-pos="left" data-panel-order="1" data-panel-size="619,142">
 					<div class="openwebrx-panel-inner" id="openwebrx-log-scroll">
 						<div id="openwebrx-client-log-title">OpenWebRX client log</strong><span id="openwebrx-problems"></span></div>
@@ -145,5 +142,11 @@
 			</div>
 	</div>
 </div>
+	<div id="openwebrx-big-grey" onclick="iosPlayButtonClick();">
+		<div id="openwebrx-play-button-text">
+		<img id="openwebrx-play-button" src="gfx/openwebrx-play-button.png" />
+		<br /><br />Start OpenWebRX
+		</div>
+	</div>
 	</body>
 </html>

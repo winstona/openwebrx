@@ -72,6 +72,9 @@ var rx_photo_state=1;
 
 function e(what) { return document.getElementById(what); }
 
+ios = /iPad|iPod|iPhone/.test(navigator.userAgent);
+//alert("ios="+ios.toString()+"  "+navigator.userAgent);
+
 function init_rx_photo()
 {
 	e("webrx-top-photo-clip").style.maxHeight=rx_photo_height.toString()+"px";
@@ -225,7 +228,6 @@ function typeInAnimation(element,timeout,what,onFinish)
 	element.innerHTML+=what[0];
 	window.setTimeout(	function(){typeInAnimation(element,timeout,what.substring(1),onFinish);}, timeout );
 }
-
 
 
 
@@ -1137,7 +1139,7 @@ function on_ws_recv(evt)
 		audio_prepare(audio_data);
 		audio_buffer_current_size_debug+=audio_data.length;
 		audio_buffer_all_size_debug+=audio_data.length;
-		if(audio_initialized==0 && audio_prepared_buffers.length>audio_buffering_fill_to) audio_init()
+		if(!ios && (audio_initialized==0 && audio_prepared_buffers.length>audio_buffering_fill_to)) audio_init()
 	}
 	else if(firstChars=="FFT")
 	{
@@ -1295,14 +1297,14 @@ var audio_node;
 var audio_input_buffer_size;
 
 // Optimalise these if audio lags or is choppy:
-var audio_buffer_size = 4096;//2048 was choppy
+var audio_buffer_size;
 var audio_buffer_maximal_length_sec=3; //actual number of samples are calculated from sample rate
 var audio_buffer_decrease_to_on_overrun_sec=2.2;
 var audio_flush_interval_ms=500; //the interval in which audio_flush() is called
 
 var audio_prepared_buffers = Array();
-var audio_rebuffer = new sdrjs.Rebuffer(audio_buffer_size,sdrjs.REBUFFER_FIXED);
-var audio_last_output_buffer = new Float32Array(audio_buffer_size);
+var audio_rebuffer;
+var audio_last_output_buffer;
 var audio_last_output_offset = 0;
 var audio_buffering = false;
 //var audio_buffering_fill_to=4; //on audio underrun we wait until this n*audio_buffer_size samples are present
@@ -1417,7 +1419,7 @@ var audio_underrun_cnt = 0;
 function audio_buffer_progressbar_update()
 {
 	if(audio_buffer_progressbar_update_disabled) return;
-	var audio_buffer_value=(audio_prepared_buffers.length*audio_buffer_size)/44100;
+	var audio_buffer_value=(audio_prepared_buffers.length*audio_buffer_size)/audio_context.sampleRate;
 	audio_buffer_total_average_level_length++; audio_buffer_total_average_level=(audio_buffer_total_average_level*((audio_buffer_total_average_level_length-1)/audio_buffer_total_average_level_length))+(audio_buffer_value/audio_buffer_total_average_level_length);
 	var overrun=audio_buffer_value>audio_buffer_maximal_length_sec;
 	var underrun=audio_prepared_buffers.length==0;
@@ -1520,6 +1522,7 @@ function parsehash()
 			harr=x.split("=");
 			console.log(harr);
 			if(harr[0]=="mod") starting_mod = harr[1];
+			if(harr[0]=="sql") { e("openwebrx-panel-squelch").value=harr[1]; updateSquelch(); }
 			if(harr[0]=="freq") {
 			console.log(parseInt(harr[1]));
 			console.log(center_freq);
@@ -1540,12 +1543,21 @@ function audio_preinit()
 	catch(e)
 	{
 		divlog('Your browser does not support Web Audio API, which is required for WebRX to run. Please upgrade to a HTML5 compatible browser.', 1);
+		return;
 	}
 
-	//we send our setup packet
+	if(audio_context.sampleRate<44100*2)
+		audio_buffer_size = 4096;
+	else if(audio_context.sampleRate>=44100*2 && audio_context.sampleRate<44100*4)
+		audio_buffer_size = 4096 * 2;
+	else if(audio_context.sampleRate>44100*4)
+		audio_buffer_size = 4096 * 4;
 
+	audio_rebuffer = new sdrjs.Rebuffer(audio_buffer_size,sdrjs.REBUFFER_FIXED);
+	audio_last_output_buffer = new Float32Array(audio_buffer_size);
+
+	//we send our setup packet
 	parsehash();
-	 //needs audio_context.sampleRate to exist
 
 	audio_calculate_resampling(audio_context.sampleRate);
 	audio_resampler = new sdrjs.RationalResamplerFF(audio_client_resampling_factor,1);
@@ -1594,8 +1606,9 @@ function audio_init()
 	window.setTimeout(function(){
 		if(typeof e("openwebrx-panel-log").openwebrxHidden == "undefined" && !was_error)
 		{
-			animate(e("openwebrx-panel-log"),"opacity","",1,0,0.9,1000,60);
-			window.setTimeout(function(){toggle_panel("openwebrx-panel-log");e("openwebrx-panel-log").style.opacity="1";},1200)
+			toggle_panel("openwebrx-panel-log");
+			//animate(e("openwebrx-panel-log"),"opacity","",1,0,0.9,1000,60);
+			//window.setTimeout(function(){toggle_panel("openwebrx-panel-log");e("openwebrx-panel-log").style.opacity="1";},1200)
 		}
 	},2000);
 }
@@ -1890,9 +1903,11 @@ function openwebrx_resize()
 
 function openwebrx_init()
 {
+	if(ios) e("openwebrx-big-grey").style.display="table-cell";
+	(opb=e("openwebrx-play-button-text")).style.marginTop=(window.innerHeight/2-opb.clientHeight/2).toString()+"px";
 	init_rx_photo();
 	open_websocket();
-	place_panels();
+	place_panels(first_show_panel);
 	window.setTimeout(function(){window.setInterval(debug_audio,1000);},1000);
 	window.addEventListener("resize",openwebrx_resize);
 	check_top_bar_congestion();
@@ -1900,6 +1915,14 @@ function openwebrx_init()
 	//Synchronise volume with slider
 	updateVolume();
 	waterfallColorsDefault();
+}
+
+function iosPlayButtonClick()
+{
+	//On iOS, we can only start audio from a click or touch event.
+	audio_init();
+	e("openwebrx-big-grey").style.opacity=0;
+	window.setTimeout(function(){ e("openwebrx-big-grey").style.display="none"; },1100);
 }
 
 /*
@@ -1981,14 +2004,56 @@ function toggle_panel(what)
 {
 	var item=e(what);
 	if(item.openwebrxDisableClick) return;
-	item.openwebrxHidden=!item.openwebrxHidden;
-	place_panels();
+	item.style.transitionDuration="599ms";
+	item.style.transitionDelay="0ms";
+	if(!item.openwebrxHidden)
+	{
+		window.setTimeout(function(){item.openwebrxHidden=!item.openwebrxHidden; place_panels(); item.openwebrxDisableClick=false;},700);
+		item.style.transform="perspective( 599px ) rotateX( 90deg )";
+	}
+	else
+	{
+		item.openwebrxHidden=!item.openwebrxHidden; place_panels();
+	    window.setTimeout(function(){ item.openwebrxDisableClick=false;},700);
+		item.style.transform="perspective( 599px ) rotateX( 0deg )";
+	}
+	item.style.transitionDuration="0";
+
 	item.openwebrxDisableClick=true;
-	window.setTimeout(function(){item.openwebrxDisableClick=false;},100);
+
 }
 
-function place_panels()
+function first_show_panel(panel)
 {
+	panel.style.transitionDuration=0;
+	panel.style.transitionDelay=0;
+	rotx=(Math.random()>0.5)?-90:90;
+	roty=0;
+	if(Math.random()>0.5)
+	{
+		rottemp=rotx;
+		rotx=roty;
+		roty=rottemp;
+	}
+	if(rotx!=0 && Math.random()>0.5) rotx=270;
+	//console.log(rotx,roty);
+	transformString = "perspective( 599px ) rotateX( %1deg ) rotateY( %2deg )"
+		.replace("%1",rotx.toString()).replace("%2",roty.toString());
+	//console.log(transformString);
+	//console.log(panel);
+	panel.style.transform=transformString;
+	window.setTimeout(function() {
+		panel.style.transitionDuration="599ms";
+		panel.style.transitionDelay=(Math.floor(Math.random()*500)).toString()+"ms";
+		panel.style.transform="perspective( 599px ) rotateX( 0deg ) rotateY( 0deg )";
+		//panel.style.transitionDuration="0ms";
+		//panel.style.transitionDelay="0";
+	}, 1);
+}
+
+function place_panels(function_apply)
+{
+	if(function_apply == undefined) function_apply = function(x){};
 	var hoffset=0; //added this because the first panel should not have such great gap below
 	var left_col=[];
 	var right_col=[];
@@ -2025,6 +2090,7 @@ function place_panels()
 		p.style.bottom=y.toString()+"px";
 		p.style.visibility="visible";
 		y+=p.openwebrxPanelHeight+((p.openwebrxPanelTransparent)?0:3)*panel_margin;
+		if(function_apply) function_apply(p);
 	}
 	y=hoffset;
 	while(right_col.length>0)
@@ -2034,6 +2100,7 @@ function place_panels()
 		p.style.bottom=y.toString()+"px";
 		p.style.visibility="visible";
 		y+=p.openwebrxPanelHeight+((p.openwebrxPanelTransparent)?0:3)*panel_margin;
+		if(function_apply) function_apply(p);
 	}
 }
 
